@@ -10,7 +10,14 @@ typedef struct
     uint8_t signature[16];
     uint8_t version[4];
     uint32_t magicCode;
-} LvxFileHeader;
+} LvxFilePublicHeader;
+
+typedef struct
+{
+    uint32_t frameDuration;
+    uint8_t deviceCount;
+} LvxFilePrivateHeader;
+
 
 typedef struct
 {
@@ -18,6 +25,7 @@ typedef struct
     uint8_t hubBroadcastCode[16];
     uint8_t deviceIndex;
     uint8_t deviceType;
+    uint8_t extrinsicEnable;
     float roll;
     float pitch;
     float yaw;
@@ -28,9 +36,10 @@ typedef struct
 
 typedef struct
 {
+    // 1.1.0.0 change the point to <int, Unint:mm>
     float x;              /**< X axis, Unit:m */
-    float y;              /**< X axis, Unit:m */
-    float z;              /**< X axis, Unit:m */
+    float y;              /**< Y axis, Unit:m */
+    float z;              /**< Z axis, Unit:m */
     uint8_t reflectivity; /**< Reflectivity */
 } LivoxPoint;
 
@@ -53,7 +62,7 @@ typedef struct
     uint64_t currentOffset;
     uint64_t nextOffset;
     uint64_t frameIndex;
-    uint64_t packageCount;
+    // uint64_t packageCount;
 } FrameHeader;
 
 #pragma pack()
@@ -67,7 +76,8 @@ private:
     uint32_t curFrameIndex;
     uint64_t curOffset;
 
-    LvxFileHeader publicHeader;
+    LvxFilePublicHeader publicHeader;
+    LvxFilePrivateHeader privateHeader;
     uint8_t deviceCount;
     LvxDeviceInfo *deviceInfo;
     std::vector<uint64_t> offsetRecord;

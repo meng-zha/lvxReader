@@ -2,7 +2,7 @@
 * @Author: meng-zha
 * @Date:   2019-12-07 13:02:35
 * @Last Modified by:   meng-zha
-* @Last Modified time: 2020-02-10 20:18:08
+* @Last Modified time: 2020-06-23 16:41:49
 */
 
 #include "lvx_reader.h"
@@ -26,17 +26,33 @@ void LvxReader::InitLvxFileHeader()
     lvxFile.read((char *)publicHeader.version, sizeof(publicHeader.version));
     lvxFile.read((char *)&publicHeader.magicCode, sizeof(publicHeader.magicCode));
 
+    cout<<(int)publicHeader.version[1]<<endl;
+
     // Device Info Block
-    // if (publicHeader.version[1]=='\001')    // Change of version 1.1.0.0
-    // {
-    //     lvxFile.read((char *)&duration,sizeof(duration));
-    // }
-    lvxFile.read((char *)&deviceCount, sizeof(deviceCount));
+    if (publicHeader.version[1]=='\001')    // Change of version 1.1.0.0
+    {
+        lvxFile.read((char *)&privateHeader.frameDuration,sizeof(privateHeader.frameDuration));
+        lvxFile.read((char *)&privateHeader.deviceCount,sizeof(privateHeader.deviceCount));
+        deviceCount = privateHeader.deviceCount;
+    }
+    else
+    {
+        lvxFile.read((char *)&deviceCount, sizeof(deviceCount));
+    }
+    
     deviceInfo = new LvxDeviceInfo[(int)deviceCount];
-    lvxFile.read((char *)deviceInfo, ((int)deviceCount) * sizeof(LvxDeviceInfo));
+    if (publicHeader.version[1]=='\001')    // Change of version 1.1.0.0
+    {
+        lvxFile.read((char *)deviceInfo, ((int)deviceCount) * sizeof(LvxDeviceInfo));
+    }
+    else
+    {
+        // This is an ugly code, which makes the device info chaos.
+        lvxFile.read((char *)deviceInfo, ((int)deviceCount) * (sizeof(LvxDeviceInfo)-1));
+    }
+    
 }
 
-// boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
 
 // read next frame of points cloud
 pcl::PointCloud<pcl::PointXYZI>::Ptr LvxReader::ReadNextFrame(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud)
@@ -49,7 +65,17 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr LvxReader::ReadNextFrame(pcl::PointCloud<pc
 
     FrameHeader header;
     lvxFile.read((char *)&header, sizeof(header));
-    int count = (int)header.packageCount;
+
+    int count=0;
+    if (this->publicHeader.version[1] == '\001')
+    {
+        count = (header.nextOffset-header.currentOffset-sizeof(header))/sizeof(LvxBasePackDetail);
+    }
+    else
+    {
+        lvxFile.read((char *)&count,8);
+    }
+    count = (int)count;
 
     // record the offset of ith frame
     offsetRecord.push_back(header.currentOffset);
@@ -64,13 +90,30 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr LvxReader::ReadNextFrame(pcl::PointCloud<pc
     {
         LvxBasePackDetail packData;
         lvxFile.read((char *)&packData, sizeof(LvxBasePackDetail));
-        // printf("%s\n",(char*)packData.timestamp);
-        for (int j = 0; j < 100; j++)
+        if (packData.dataType != '\000')
         {
-            cloud->points[100 * i + j].x = packData.point[j].x;
-            cloud->points[100 * i + j].y = packData.point[j].y;
-            cloud->points[100 * i + j].z = packData.point[j].z;
-            cloud->points[100 * i + j].intensity = packData.point[j].reflectivity / 255.;
+            // the count of points may lead to errors
+            cout<<'The data type needs to be Cartesian Coordinate System!'<<endl;
+            abort();
+        }
+        if (this->publicHeader.version[1] == '\001')
+        {
+            for (int j = 0; j < 100; j++)
+            {
+                cloud->points[100 * i + j].x = (float)(reinterpret_cast<int&>(packData.point[j].x))/100;
+                cloud->points[100 * i + j].y = (float)(reinterpret_cast<int&>(packData.point[j].y))/100;
+                cloud->points[100 * i + j].z = (float)(reinterpret_cast<int&>(packData.point[j].z))/100;
+                cloud->points[100 * i + j].intensity = packData.point[j].reflectivity / 255.;
+            }
+        }
+        else{
+            for (int j = 0; j < 100; j++)
+            {
+                cloud->points[100 * i + j].x = packData.point[j].x;
+                cloud->points[100 * i + j].y = packData.point[j].y;
+                cloud->points[100 * i + j].z = packData.point[j].z;
+                cloud->points[100 * i + j].intensity = packData.point[j].reflectivity / 255.;
+            }
         }
     }
 
@@ -113,12 +156,12 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr LvxReader::SumXSeconds(int time)
 int main(int argc, char const *argv[])
 {
     printf("hello world\n");
-    // LvxReader lvx("/media/meng-zha/58b26bdb-c733-4c63-b7d9-4d845394a721/BeiCao_20191211/mid100_raw/mid100_20191211_162219.lvx");
-    LvxReader lvx("/home/meng-zha/Livox Viewer For Linux Ubuntu16.04_x64 0.5.0/data/record files/2020-02-10 19-46-55.lvx");
+    LvxReader lvx("/media/meng-zha/58b26bdb-c733-4c63-b7d9-4d845394a721/FuXiao_20200111/mid100_raw/mid100_1.lvx");
+    // LvxReader lvx("/home/meng-zha/Livox Viewer For Linux Ubuntu16.04_x64 0.5.0/data/record files/2020-02-10 19-46-55.lvx");
     pcl::PointCloud<pcl::PointXYZI>::Ptr cloud;
     // cloud=lvx.SumXSeconds(5);
     // char pcdName[100];
-    // sprintf(pcdName, "/media/meng-zha/58b26bdb-c733-4c63-b7d9-4d845394a721/FuXiao_20200111/mid100_pcd/BeiCao_%ds_1.pcd", 10);
+    // sprintf(pcdName, "/media/meng-zha/58b26bdb-c733-4c63-b7d9-4d845394a721/FuXiao_20200111/mid100_pcd/FuXiao_%ds_4.pcd", 10);
     // pcl::io::savePCDFileASCII(pcdName, *cloud);
     int index = 0;
     while (1)
@@ -146,7 +189,7 @@ int main(int argc, char const *argv[])
             break;
         }
         char pcdName[100];
-        sprintf(pcdName, "/media/meng-zha/58b26bdb-c733-4c63-b7d9-4d845394a721/BeiCao_20191211/mid100_pcd/mid100_seq_10hz/BeiCao_%d.pcd", index);
+        sprintf(pcdName, "/media/meng-zha/58b26bdb-c733-4c63-b7d9-4d845394a721/FuXiao_20200111/mid100_pcd/mid100_seq_10hz/FuXiao_1_%d.pcd", index);
         // sprintf(pcdName,"/home/meng-zha/beginners/lvxReader/data/mid100_2/BeiCao_%d.pcd",index);
         printf("%d,%d\n",index,sumCloud->width);
         pcl::io::savePCDFileASCII(pcdName, *sumCloud);
