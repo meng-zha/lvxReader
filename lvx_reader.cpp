@@ -2,7 +2,7 @@
 * @Author: meng-zha
 * @Date:   2019-12-07 13:02:35
 * @Last Modified by:   meng-zha
-* @Last Modified time: 2020-06-23 16:41:49
+* @Last Modified time: 2021-05-24 21:44:10
 */
 
 #include "lvx_reader.h"
@@ -86,23 +86,26 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr LvxReader::ReadNextFrame(pcl::PointCloud<pc
     cloud->points.resize(cloud->width * cloud->height);
     cloud->is_dense = false;
 
+    long avgTimestamp = 0;
+
     for (int i = 0; i < count; i++)
     {
         LvxBasePackDetail packData;
         lvxFile.read((char *)&packData, sizeof(LvxBasePackDetail));
+        avgTimestamp += *(int*)(packData.timestamp+4);
         if (packData.dataType != '\000')
         {
             // the count of points may lead to errors
-            cout<<'The data type needs to be Cartesian Coordinate System!'<<endl;
+            cout<<"The data type needs to be Cartesian Coordinate System!"<<endl;
             abort();
         }
         if (this->publicHeader.version[1] == '\001')
         {
             for (int j = 0; j < 100; j++)
             {
-                cloud->points[100 * i + j].x = (float)(reinterpret_cast<int&>(packData.point[j].x))/100;
-                cloud->points[100 * i + j].y = (float)(reinterpret_cast<int&>(packData.point[j].y))/100;
-                cloud->points[100 * i + j].z = (float)(reinterpret_cast<int&>(packData.point[j].z))/100;
+                cloud->points[100 * i + j].x = (float)(reinterpret_cast<int&>(packData.point[j].x))/1000;
+                cloud->points[100 * i + j].y = (float)(reinterpret_cast<int&>(packData.point[j].y))/1000;
+                cloud->points[100 * i + j].z = (float)(reinterpret_cast<int&>(packData.point[j].z))/1000;
                 cloud->points[100 * i + j].intensity = packData.point[j].reflectivity / 255.;
             }
         }
@@ -116,6 +119,7 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr LvxReader::ReadNextFrame(pcl::PointCloud<pc
             }
         }
     }
+    cout << "avg timestamp:"<<avgTimestamp/count<<endl;
 
     // while(!viewer->wasStopped())
     // {
@@ -156,13 +160,17 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr LvxReader::SumXSeconds(int time)
 int main(int argc, char const *argv[])
 {
     printf("hello world\n");
-    LvxReader lvx("/media/meng-zha/58b26bdb-c733-4c63-b7d9-4d845394a721/FuXiao_20200111/mid100_raw/mid100_1.lvx");
+    LvxReader lvx("/media/meng-zha/Elements/lvxSync/2021-05-22_14-18-10.lvx");
     // LvxReader lvx("/home/meng-zha/Livox Viewer For Linux Ubuntu16.04_x64 0.5.0/data/record files/2020-02-10 19-46-55.lvx");
     pcl::PointCloud<pcl::PointXYZI>::Ptr cloud;
+
+    /* the code to integrate a long time points */
     // cloud=lvx.SumXSeconds(5);
     // char pcdName[100];
     // sprintf(pcdName, "/media/meng-zha/58b26bdb-c733-4c63-b7d9-4d845394a721/FuXiao_20200111/mid100_pcd/FuXiao_%ds_4.pcd", 10);
     // pcl::io::savePCDFileASCII(pcdName, *cloud);
+
+    /* the code to convert every frame */
     int index = 0;
     while (1)
     {
@@ -179,31 +187,23 @@ int main(int argc, char const *argv[])
         {
             break;
         }
-        pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_n(new pcl::PointCloud<pcl::PointXYZI>);
-        cloud_n = lvx.ReadNextFrame(cloud_n);
-        sumCloud->width += cloud_n->width;
-        sumCloud->points.insert(sumCloud->points.end(), cloud_n->points.begin(), cloud_n->points.end());
-        sumCloud->points.resize(sumCloud->width * sumCloud->height);
-        if (cloud_n == nullptr)
-        {
-            break;
-        }
+        // pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_n(new pcl::PointCloud<pcl::PointXYZI>);
+        // cloud_n = lvx.ReadNextFrame(cloud_n);
+        // sumCloud->width += cloud_n->width;
+        // sumCloud->points.insert(sumCloud->points.end(), cloud_n->points.begin(), cloud_n->points.end());
+        // sumCloud->points.resize(sumCloud->width * sumCloud->height);
+        // if (cloud_n == nullptr)
+        // {
+        //     break;
+        // }
         char pcdName[100];
-        sprintf(pcdName, "/media/meng-zha/58b26bdb-c733-4c63-b7d9-4d845394a721/FuXiao_20200111/mid100_pcd/mid100_seq_10hz/FuXiao_1_%d.pcd", index);
-        // sprintf(pcdName,"/home/meng-zha/beginners/lvxReader/data/mid100_2/BeiCao_%d.pcd",index);
+        // sprintf(pcdName, "/media/meng-zha/58b26bdb-c733-4c63-b7d9-4d845394a721/FuXiao_20200111/mid100_pcd/mid100_seq_10hz/FuXiao_1/FuXiao_1__%d.pcd", index);
+        sprintf(pcdName,"/home/meng-zha/beginners/lvxReader/data/mid100_2/BeiCao_%d.pcd",index);
         printf("%d,%d\n",index,sumCloud->width);
         pcl::io::savePCDFileASCII(pcdName, *sumCloud);
         index++;
         // printf("%s\n", pcdName);
     }
-
-    // while (!viewer->wasStopped())
-    // {
-    //     viewer->removeAllPointClouds();
-    //     viewer->addPointCloud<pcl::PointXYZI>((pcl::PointCloud<pcl::PointXYZI>::ConstPtr)sumCloud, "test");
-    //     viewer->spinOnce(500);
-    // }
-    // pcl::io::savePCDFileASCII("../data/北操积分10s.pcd", *sumCloud);
 
     printf("goodbye world\n");
     return 0;
